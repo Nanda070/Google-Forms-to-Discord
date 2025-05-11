@@ -1,0 +1,103 @@
+    const ВЕБХУК = ""; // Вебхук 
+
+
+    const УПОМИНАНИЕ = "" ; // Вставляйте Role/User ID
+    const ЦВЕТ = 7519001; // https://www.spycolor.com
+    const ЗАГОЛОВОК = ""; // Заголовок 
+    const ССЫЛКА = ""; // Делает из Вашего заголовка ссылку, по которой можно перейти. 
+    const ПОДЗАГОЛОВОК = ""; // Подзаголовок 
+    const КАРТИНКА_СПРАВА = ""; // Картинка будет снизу гугл формы 
+    const КАРТИНКА_СНИЗУ = ""; // Картинка будет снизу гугл формы 
+
+
+    // Авторский блок // 
+    const ИМЯ = ""; // Имя автора  
+    const ССЫЛКА_2 = ""; // Ссылка на источник 
+    const АВАТАР = ""; // Аватар автора 
+
+
+    // Подпись //
+    const ПОДПИСЬ = ""; // Текст снизу 
+    const ИКОНКА = ""; // Работает только, если имеется подпись 
+    const ВРЕМЯ_ОТПРАВКИ = false; // Время поста снизу. true - включено / false - выключено
+
+
+
+    // !!!! НЕ ТРОГАЙТЕ КОД НИЖЕ //
+
+    function onSubmit(e) {
+        const response = e.response.getItemResponses();
+        let items = [];
+
+        for (const responseAnswer of response) {
+            const question = responseAnswer.getItem().getTitle();
+            const answer = responseAnswer.getResponse();
+            let parts = []
+
+            try {
+                parts = answer.match(/[\s\S]{1,1024}/g) || [];
+            } catch (e) {
+                parts = answer;
+            }
+
+            if (!answer) {
+                continue;
+            }
+
+            for (const [index, part] of Object.entries(parts)) {
+                if (index == 0) {
+                    items.push({
+                        "name": question,
+                        "value": part,
+                        "inline": false
+                    });
+                } else {
+                    items.push({
+                        "name": question.concat(" (cont.)"),
+                        "value": part,
+                        "inline": false
+                    });
+                }
+            }
+        }
+
+        var TIME = "";
+        if (ВРЕМЯ_ОТПРАВКИ) {
+          TIME = new Date().toISOString();
+        }
+
+        var options = {
+            "method": "post",
+            "headers": {
+                "Content-Type": "application/json",
+            },
+            "payload": JSON.stringify({
+                "content": УПОМИНАНИЕ,
+                "embeds": [{
+                    "title": ЗАГОЛОВОК,
+                    "color": ЦВЕТ,
+                    "description": ПОДЗАГОЛОВОК,
+                    "url": ССЫЛКА,
+                    "fields": items,
+                          "image": {
+                                "url": КАРТИНКА_СНИЗУ
+                    },
+                        "author": {
+                                "name": ИМЯ,
+                                "url": ССЫЛКА_2,
+                                "icon_url": АВАТАР
+                    },
+                        "thumbnail": {
+                                 "url": КАРТИНКА_СПРАВА
+                    },  
+                          "footer": {
+                                "text": ПОДПИСЬ,
+                                "icon_url": ИКОНКА,
+                    },
+                    "timestamp": TIME
+                }],
+            })
+        };
+
+        UrlFetchApp.fetch(ВЕБХУК, options);
+    };
