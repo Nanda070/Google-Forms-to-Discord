@@ -1,0 +1,116 @@
+const WEBHOOK_URL         = ""; // Вебхук 
+const COLOR               = 0x404040; //  https://www.spycolor.com
+const TITLE               = ""; // Заголовок  
+const URL                 = ""; Делает из Вашего заголовка ссылку, по которой можно перейти. 
+const DESCRIPTION         = ""; // Подзаголовок 
+const THUMBNAIL_URL       = "";  // Картинка будет снизу гугл формы 
+const FOOTER_GIF_URL      = "";  // Картинка будет снизу гугл формы 
+
+// Авторский блок
+const AUTHOR_NAME         = ""; // Имя автора  
+const AUTHOR_URL          = ""; // Ссылка на источник 
+const AUTHOR_ICON_URL     = ""; // Аватар автора 
+
+// Подпись
+const FOOTER_TEXT         = ""; // Текст снизу 
+const FOOTER_ICON_URL     = ""; // Работает только, если имеется подпись 
+const INCLUDE_TIMESTAMP   = false;  // Время поста снизу. true - включено / false - выключено
+
+// Функция разбивки по строкам с учётом лимита 1024 символа
+function chunkLines(lines, maxLen = 1024) {
+  const parts = [];
+  let buffer = "";
+  for (const line of lines) {
+    const candidate = buffer ? buffer + "\n" + line : line;
+    if (candidate.length > maxLen) {
+      parts.push(buffer);
+      buffer = line;
+    } else {
+      buffer = candidate;
+    }
+  }
+  if (buffer) parts.push(buffer);
+  return parts.filter(p => p.trim().length > 0);
+}
+
+function onSubmit(e) {
+  const responses = e.response.getItemResponses();
+  const fields = [];
+
+  responses.forEach((resp) => {
+    const question = resp.getItem().getTitle();
+    const answer   = resp.getResponse();
+    if (!answer) return;
+
+    // Разбиваем по строкам и аккуратно упаковываем в части ≤1024
+    const lines = answer.split("\n");
+    const parts = chunkLines(lines);
+
+    parts.forEach((part, idx) => {
+      // Фильтруем чисто цифровые ID вида "12345/67890"
+      if (/^\d+\/\d+$/.test(part.trim())) return;
+
+      fields.push({
+        name:   idx === 0 ? question : `${question} (cont.)`,
+        value:  part,
+        inline: false
+      });
+    });
+  });
+
+  // Динамическое упоминание по 3-му ответу
+  const thirdAnswer = responses[2]?.getResponse() || "";
+  let dynamicMention = "";
+
+  switch (thirdAnswer) {
+    case "Выбор1)": // Третий выбор в форме (Multiple Choise) название
+      dynamicMention = "<@&1304152891157778543>"; // Вставляйте Role/User ID
+      break;
+    case "Выбор2": // Третий выбор в форме (Multiple Choise) название
+      dynamicMention = "<@&1304152891157778543>"; // Вставляйте Role/User ID
+      break;  
+    case "Выбор3": // Третий выбор в форме (Multiple Choise) название
+      dynamicMention = "<@&1304152891157778543>; // Вставляйте Role/User ID
+      break;  
+    case "Выбор4": // Третий выбор в форме (Multiple Choise) название
+      dynamicMention = "";
+      break;  
+    default:
+      dynamicMention = "";
+  }
+
+  // Статичные упоминания 
+  const staticMention = "<@&1304152891157778543>"; // Третий выбор в форме  (Multiple Choise) название Вставляйте Role/User ID
+  const fullMention = `${staticMention} ${dynamicMention}`.trim();
+
+  const timestamp = INCLUDE_TIMESTAMP ? new Date().toISOString() : "";
+
+  const payload = {
+    content: fullMention,
+    embeds: [{
+      title:       TITLE,
+      url:         URL,
+      description: DESCRIPTION,
+      color:       COLOR,
+      fields:      fields,
+      thumbnail:   { url: THUMBNAIL_URL },
+      image:       { url: FOOTER_GIF_URL },
+      author: {
+        name:     AUTHOR_NAME,
+        url:      AUTHOR_URL,
+        icon_url: AUTHOR_ICON_URL
+      },
+      footer: {
+        text:      FOOTER_TEXT,
+        icon_url:  FOOTER_ICON_URL
+      },
+      timestamp: timestamp
+    }]
+  };
+
+  UrlFetchApp.fetch(WEBHOOK_URL, {
+    method:      "post",
+    contentType: "application/json",
+    payload:     JSON.stringify(payload)
+  });
+}
