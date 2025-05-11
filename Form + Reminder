@@ -1,0 +1,137 @@
+// ====================== Embed-настройки для заявки ======================
+const ВЕБХУК           = ""; // Первых Вебхук для изначальной отправки
+const УПОМИНАНИЕ       = ""; // Тег
+const ЦВЕТ             = 7519001;
+const ЗАГОЛОВОК        = "";
+const ССЫЛКА           = ""; // Ссылка на календарь
+const ПОДЗАГОЛОВОК     = "";
+const КАРТИНКА_СПРАВА  = "";
+const КАРТИНКА_СНИЗУ   = "";
+const ИМЯ              = "";
+const ССЫЛКА_2         = "";
+const АВАТАР           = "";
+const ПОДПИСЬ          = "";
+const ИКОНКА           = "";
+const ВРЕМЯ_ОТПРАВКИ   = false;
+
+const WEBHOOK_REMINDER = ""; // Второй вебхук где будут напоминания
+
+// ====================== Календарь ======================
+const CALENDAR_ID      = ""; // ID Календаря
+
+// ====================== Обработчик новой формы ======================
+function onFormSubmit(e) {
+  const data = e.values;
+  // Массив заголовков вопросов в том же порядке, в котором они идут в форме
+  const questions = [
+    "Меткa времени",           // data[0]
+    "Ваше ФИО | Должность",     // data[1]
+    "Ваш Департамент",          // data[2]
+    "Причина Запроса",          // data[3]
+    "Дата сопровождения",       // data[4]
+    "Время сопровождения",      // data[5]
+    "Маршрут"                   // data[6]
+  ];
+
+  // Создаём поля для embed
+  const items = [];
+  for (let i = 1; i < data.length; i++) {
+    const answer = data[i] || "";
+    const parts = answer.match(/[\s\S]{1,1024}/g) || [""];
+    parts.forEach((part, idx) => {
+      items.push({
+        name:  questions[i] + (idx>0 ? " (продолжение)" : ""),
+        value: part,
+        inline: false
+      });
+    });
+  }
+
+  // Создаём событие в календаре
+  const [ , requesterName, department, reason, dateIn, timeIn, route ] = data;
+  let eventDate = parseDateTime(dateIn, timeIn);
+  if (eventDate) {
+    const cal = CalendarApp.getCalendarById(CALENDAR_ID);
+    cal && cal.createEvent(
+      "Сопровождение: " + requesterName,
+      eventDate,
+      new Date(eventDate.getTime() + 60*60*1000),
+      { description: `Департамент: ${department}\nПричина: ${reason}\nМаршрут: ${route}` }
+    );
+  }
+
+  // Собираем payload для embed-запроса
+  const TIME = ВРЕМЯ_ОТПРАВКИ ? new Date().toISOString() : "";
+  const payload = {
+    content: УПОМИНАНИЕ,
+    embeds: [{
+      title:       ЗАГОЛОВОК,
+      url:         ССЫЛКА,
+      description: ПОДЗАГОЛОВОК,
+      color:       ЦВЕТ,
+      fields:      items,
+      thumbnail:   { url: КАРТИНКА_СПРАВА },
+      image:       { url: КАРТИНКА_СНИЗУ },
+      author:      { name: ИМЯ, url: ССЫЛКА_2, icon_url: АВАТАР },
+      footer:      { text: ПОДПИСЬ, icon_url: ИКОНКА },
+      timestamp:   TIME
+    }]
+  };
+
+  UrlFetchApp.fetch(ВЕБХУК, {
+    method:      "post",
+    contentType: "application/json",
+    payload:     JSON.stringify(payload)
+  });
+}
+
+// Вспомогалка для парсинга даты+времени
+function parseDateTime(dateStr, timeStr) {
+  let dt;
+  if (Object.prototype.toString.call(dateStr) === "[object Date]") {
+    dt = new Date(dateStr);
+  } else {
+    const sep = dateStr.includes("/") ? "/" : ".";
+    const [d,m,y] = dateStr.split(sep).map(Number);
+    dt = new Date(y, m-1, d);
+  }
+  if (!dt || !timeStr) return null;
+  const [h,min] = timeStr.split(":").map(Number);
+  dt.setHours(h, min, 0);
+  return dt;
+}
+
+// ====================== Напоминания (без изменений) ======================
+function sendReminder() {
+  const cal = CalendarApp.getCalendarById(CALENDAR_ID);
+  if (!cal) return;
+  const now = new Date(), future = new Date(now.getTime()+24*60*60*1000);
+  const events = cal.getEvents(now, future);
+  const props = PropertiesService.getScriptProperties();
+  let notified = JSON.parse(props.getProperty("notifiedEvents")||"[]")
+                  .filter(i=>i.start>now.getTime());
+
+  const minMs = 28*60*1000, maxMs = 32*60*1000;
+  events.forEach(evt=>{
+    const id = evt.getId(), startMs = evt.getStartTime().getTime();
+    if (notified.some(i=>i.id===id)) return;
+    const diff = startMs - now.getTime();
+    if (diff>=minMs && diff<=maxMs) {
+      const desc = evt.getDescription().match(/Маршрут:\s*(.*)/i)?.[1]||"";
+      const text = `${УПОМИНАНИЕ} **Напоминание о сопровождении: маршрут "${desc}", начало ${formatDateTime(evt.getStartTime())}.**`;
+      UrlFetchApp.fetch(WEBHOOK_REMINDER, { method:"post", contentType:"application/json", payload:JSON.stringify({content:text}) });
+      notified.push({id:id, start:startMs});
+    }
+  });
+  props.setProperty("notifiedEvents", JSON.stringify(notified));
+}
+
+// ====================== Форматтер даты/времени ======================
+function formatDateTime(date) {
+  const dd  = String(date.getDate()).padStart(2,'0');
+  const mm  = String(date.getMonth()+1).padStart(2,'0');
+  const yy  = date.getFullYear();
+  const hh  = String(date.getHours()).padStart(2,'0');
+  const min = String(date.getMinutes()).padStart(2,'0');
+  return `${dd}.${mm}.${yy} ${hh}:${min}`;
+}
