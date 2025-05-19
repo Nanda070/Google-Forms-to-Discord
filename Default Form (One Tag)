@@ -1,103 +1,135 @@
-    const ВЕБХУК = ""; // Вебхук 
+// ==================== КОНФИГУРАЦИЯ ====================
+const WEBHOOK_URL       = "";
+const COLOR             = 0x404040;
+const TITLE             = "";
+const URL               = "";  
+const DESCRIPTION       = "";  
+const THUMBNAIL_URL     = "";
+const IMAGE_URL         = "";
 
+const AUTHOR_NAME       = "";
+const AUTHOR_URL        = "";
+const AUTHOR_ICON_URL   = "";
 
-    const УПОМИНАНИЕ = "" ; // Вставляйте Role/User ID
-    const ЦВЕТ = 7519001; // https://www.spycolor.com
-    const ЗАГОЛОВОК = ""; // Заголовок 
-    const ССЫЛКА = ""; // Делает из Вашего заголовка ссылку, по которой можно перейти. 
-    const ПОДЗАГОЛОВОК = ""; // Подзаголовок 
-    const КАРТИНКА_СПРАВА = ""; // Картинка будет снизу гугл формы 
-    const КАРТИНКА_СНИЗУ = ""; // Картинка будет снизу гугл формы 
+const FOOTER_TEXT       = "";
+const FOOTER_ICON_URL   = "";
+const INCLUDE_TIMESTAMP = false;
 
-
-    // Авторский блок // 
-    const ИМЯ = ""; // Имя автора  
-    const ССЫЛКА_2 = ""; // Ссылка на источник 
-    const АВАТАР = ""; // Аватар автора 
-
-
-    // Подпись //
-    const ПОДПИСЬ = ""; // Текст снизу 
-    const ИКОНКА = ""; // Работает только, если имеется подпись 
-    const ВРЕМЯ_ОТПРАВКИ = false; // Время поста снизу. true - включено / false - выключено
+const STATIC_MENTION    = "";
 
 
 
-    // !!!! НЕ ТРОГАЙТЕ КОД НИЖЕ //
+// ==================== УТИЛИТЫ ====================
 
-    function onSubmit(e) {
-        const response = e.response.getItemResponses();
-        let items = [];
+function chunkLines(lines, maxLen = 1024) {
+  const parts = [];
+  let buffer = "";
 
-        for (const responseAnswer of response) {
-            const question = responseAnswer.getItem().getTitle();
-            const answer = responseAnswer.getResponse();
-            let parts = []
+  for (const line of lines) {
+    const combined = buffer ? buffer + "\n" + line : line;
+    if (combined.length > maxLen) {
+      parts.push(buffer);
+      buffer = line;
+    } else {
+      buffer = combined;
+    }
+  }
+  if (buffer) parts.push(buffer);
+  return parts.filter(p => p.trim().length > 0);
+}
 
-            try {
-                parts = answer.match(/[\s\S]{1,1024}/g) || [];
-            } catch (e) {
-                parts = answer;
-            }
+function batchFields(fields, maxFields = 25, charLimit = 3000) {
+  const batches = [];
+  let current = { list: [], length: 0 };
 
-            if (!answer) {
-                continue;
-            }
+  for (const f of fields) {
+    const size = f.name.length + f.value.length;
+    if (current.list.length >= maxFields || current.length + size > charLimit) {
+      batches.push(current.list);
+      current = { list: [], length: 0 };
+    }
+    current.list.push(f);
+    current.length += size;
+  }
+  if (current.list.length) batches.push(current.list);
+  return batches.length ? batches : [[]];
+}
 
-            for (const [index, part] of Object.entries(parts)) {
-                if (index == 0) {
-                    items.push({
-                        "name": question,
-                        "value": part,
-                        "inline": false
-                    });
-                } else {
-                    items.push({
-                        "name": question.concat(" (cont.)"),
-                        "value": part,
-                        "inline": false
-                    });
-                }
-            }
-        }
 
-        var TIME = "";
-        if (ВРЕМЯ_ОТПРАВКИ) {
-          TIME = new Date().toISOString();
-        }
 
-        var options = {
-            "method": "post",
-            "headers": {
-                "Content-Type": "application/json",
-            },
-            "payload": JSON.stringify({
-                "content": УПОМИНАНИЕ,
-                "embeds": [{
-                    "title": ЗАГОЛОВОК,
-                    "color": ЦВЕТ,
-                    "description": ПОДЗАГОЛОВОК,
-                    "url": ССЫЛКА,
-                    "fields": items,
-                          "image": {
-                                "url": КАРТИНКА_СНИЗУ
-                    },
-                        "author": {
-                                "name": ИМЯ,
-                                "url": ССЫЛКА_2,
-                                "icon_url": АВАТАР
-                    },
-                        "thumbnail": {
-                                 "url": КАРТИНКА_СПРАВА
-                    },  
-                          "footer": {
-                                "text": ПОДПИСЬ,
-                                "icon_url": ИКОНКА,
-                    },
-                    "timestamp": TIME
-                }],
-            })
-        };
+// ==================== ОСНОВНАЯ ФУНКЦИЯ ====================
 
-        UrlFetchApp.fetch(ВЕБХУК, options);
+function onSubmit(e) {
+  const responses = e.response.getItemResponses();
+  const fields = [];
+
+  // 1) Сбор полей
+  responses.forEach(resp => {
+    const question = resp.getItem().getTitle();
+    const answer   = resp.getResponse();
+    if (!answer) return;
+
+    const chunks = chunkLines(answer.split("\n"));
+    chunks.forEach((chunk, idx) => {
+      if (/^\d+\/\d+$/.test(chunk.trim())) return;
+      fields.push({
+        name:   idx === 0 ? question : `${question} (cont.)`,
+        value:  chunk,
+        inline: false
+      });
+    });
+  });
+
+  // 2) Батчим поля
+  const fieldBatches = batchFields(fields, 25, 3000);
+  const lastIndex    = fieldBatches.length - 1;
+
+  // 3) Формируем embeds
+  const allEmbeds = fieldBatches.map((batch, idx) => {
+    const embed = {
+      color:  COLOR,
+      fields: batch
     };
+
+    // Первый embed — добавляем шапку
+    if (idx === 0) {
+      embed.title       = TITLE;
+      if (URL)         embed.url         = URL;
+      if (DESCRIPTION) embed.description = DESCRIPTION;
+      embed.author      = {
+        name:     AUTHOR_NAME,
+        url:      AUTHOR_URL,
+        icon_url: AUTHOR_ICON_URL
+      };
+      if (THUMBNAIL_URL) embed.thumbnail = { url: THUMBNAIL_URL };
+    }
+
+    // Последний embed — добавляем картинку, footer и timestamp
+    if (idx === lastIndex) {
+      if (IMAGE_URL)     embed.image     = { url: IMAGE_URL };
+      embed.footer      = {
+        text:     FOOTER_TEXT,
+        icon_url: FOOTER_ICON_URL
+      };
+      if (INCLUDE_TIMESTAMP) {
+        embed.timestamp = new Date().toISOString();
+      }
+    }
+
+    return embed;
+  });
+
+  // 4) Отправляем пачками по 10 embeds
+  const MAX_PER_MSG = 10;
+  for (let i = 0; i < allEmbeds.length; i += MAX_PER_MSG) {
+    const slice = allEmbeds.slice(i, i + MAX_PER_MSG);
+    UrlFetchApp.fetch(WEBHOOK_URL, {
+      method:      "post",
+      contentType: "application/json",
+      payload:     JSON.stringify({
+        content: STATIC_MENTION,
+        embeds:  slice
+      })
+    });
+  }
+}
